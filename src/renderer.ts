@@ -17,8 +17,15 @@ export default class Renderer {
     let myChart = echarts.getInstanceByDom(container)
     let { width, height } = this.options
 
-    // On mobile, do not pass fixed pixel dimensions — let ECharts auto-size
-    // to avoid layout errors in WKWebView before the container is measured.
+    if (Platform.isMobile) {
+      // Set CSS size BEFORE echarts.init() so ECharts measures the correct
+      // container dimensions. On mobile we fill 100% width and use a fixed height.
+      container.style.width = '100%'
+      container.style.height = `${height || 400}px`
+    }
+
+    // On mobile, pass no pixel dimensions — let ECharts read from the CSS above.
+    // On desktop, use explicit pixels (or defaults).
     const initOpts: { width?: number; height?: number } = Platform.isMobile
       ? {}
       : { width: width || 800, height: height || 600 }
@@ -33,11 +40,9 @@ export default class Renderer {
       )
     }
 
-    // Ensure the container has an explicit height so ECharts renders on mobile
+    // After init, trigger a resize so ECharts picks up the rendered CSS width.
     if (Platform.isMobile) {
-      container.style.width = '100%'
-      container.style.height = `${height || 400}px`
-      myChart.resize()
+      requestAnimationFrame(() => { myChart.resize() })
     }
 
     return myChart
