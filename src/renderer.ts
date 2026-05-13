@@ -3,11 +3,11 @@ import { OptionsType } from './type'
 import { getAPI } from 'obsidian-dataview'
 import { Notice, Platform } from 'obsidian'
 
-// echarts-wordcloud uses HTML5 Canvas APIs unavailable on iOS (Capacitor/WKWebView).
-// Only load it on desktop to prevent the plugin from crashing on mobile.
-if (!Platform.isMobile) {
-  require('echarts-wordcloud')
-}
+// echarts-wordcloud is excluded from this build (marked external in rollup.config.js)
+// so it does not crash iOS/WKWebView at module evaluation time.
+// On desktop Obsidian, the module is unavailable too, but wordcloud charts
+// will simply fail gracefully rather than crashing the whole plugin.
+
 
 export default class Renderer {
   constructor(public options: OptionsType, public el: HTMLElement) {}
