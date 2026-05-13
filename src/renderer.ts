@@ -1,8 +1,13 @@
 import * as echarts from 'echarts'
-import 'echarts-wordcloud'
 import { OptionsType } from './type'
 import { getAPI } from 'obsidian-dataview'
-import { Notice } from 'obsidian'
+import { Notice, Platform } from 'obsidian'
+
+// echarts-wordcloud uses HTML5 Canvas APIs unavailable on iOS (Capacitor/WKWebView).
+// Only load it on desktop to prevent the plugin from crashing on mobile.
+if (!Platform.isMobile) {
+  require('echarts-wordcloud')
+}
 
 export default class Renderer {
   constructor(public options: OptionsType, public el: HTMLElement) {}
@@ -11,10 +16,12 @@ export default class Renderer {
     const container = this.el.createDiv('echarts-container')
     let myChart = echarts.getInstanceByDom(container)
     let { width, height } = this.options
-    if (!width || !height) {
-      width = 800
-      height = 600
-    }
+
+    // On mobile, do not pass fixed pixel dimensions — let ECharts auto-size
+    // to avoid layout errors in WKWebView before the container is measured.
+    const initOpts: { width?: number; height?: number } = Platform.isMobile
+      ? {}
+      : { width: width || 800, height: height || 600 }
 
     if (!myChart) {
       myChart = echarts.init(
@@ -22,14 +29,28 @@ export default class Renderer {
         Array.from(document.body.classList).includes('theme-dark')
           ? 'dark'
           : 'light',
-        { width, height }
+        initOpts
       )
+    }
+
+    // Ensure the container has an explicit height so ECharts renders on mobile
+    if (Platform.isMobile) {
+      container.style.width = '100%'
+      container.style.height = `${height || 400}px`
+      myChart.resize()
     }
 
     return myChart
   }
 
   renderPie() {
+    // Pie charts depend on Dataview — skip silently on mobile where Dataview
+    // is also unsupported, rather than crashing.
+    if (Platform.isMobile) {
+      new Notice('Pie charts with Dataview source are not supported on mobile.', 3000)
+      return
+    }
+
     const myChart = this.initChart()
     const { width, height, ...option } = this.options
     const source = option.source
@@ -104,33 +125,38 @@ export default class Renderer {
     const { width, height, ...option } = this.options
     try {
       myChart.setOption({ animation: false, ...option })
-      myChart.on('click', function (params) {
-        let prefix: string = ''
-        let searchWord: string = ''
-        if (params.data['search']) {
-          let search = params.data['search']
-          if (search === 'tag') prefix = 'tag:'
-          if (search === 'content') prefix = 'content:'
-          if (search === 'path') prefix = 'path:'
-          if (search === 'file') prefix = 'file:'
-          searchWord = prefix + params.name
-        }
-        if (params.data['path']) {
-          searchWord = searchWord + ' ' + 'path:' + params.data['path']
-        }
-        if (params.data['file']) {
-          searchWord = searchWord + ' ' + 'file:' + params.data['file']
-        }
-        if (searchWord) {
-          app.internalPlugins.getPluginById('global-search')?.instance.openGlobalSearch(searchWord);
-        } else {
-          const filePath = app.metadataCache.getFirstLinkpathDest(
-            params.name,
-            ""
-          )
-          app.workspace.getUnpinnedLeaf().openFile(filePath)
-        }
-      })
+
+      // Click-to-search is a desktop-only feature (uses internal search plugin
+      // and workspace APIs that are not available on mobile).
+      if (!Platform.isMobile) {
+        myChart.on('click', function (params) {
+          let prefix: string = ''
+          let searchWord: string = ''
+          if (params.data['search']) {
+            let search = params.data['search']
+            if (search === 'tag') prefix = 'tag:'
+            if (search === 'content') prefix = 'content:'
+            if (search === 'path') prefix = 'path:'
+            if (search === 'file') prefix = 'file:'
+            searchWord = prefix + params.name
+          }
+          if (params.data['path']) {
+            searchWord = searchWord + ' ' + 'path:' + params.data['path']
+          }
+          if (params.data['file']) {
+            searchWord = searchWord + ' ' + 'file:' + params.data['file']
+          }
+          if (searchWord) {
+            app.internalPlugins.getPluginById('global-search')?.instance.openGlobalSearch(searchWord);
+          } else {
+            const filePath = app.metadataCache.getFirstLinkpathDest(
+              params.name,
+              ""
+            )
+            app.workspace.getUnpinnedLeaf().openFile(filePath)
+          }
+        })
+      }
     } catch (err) {
       new Error(err)
     }
